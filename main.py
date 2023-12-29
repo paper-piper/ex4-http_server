@@ -17,8 +17,15 @@ CONTENT_TYPES = {
     "gif": "image/gif",
     "png": "image/png"
 }
+SPECIAL_CASE_HEADERS = {
+    '/forbidden': "HTTP/1.1 403 Forbidden\r\n\r\n",
+    '/moved': "HTTP/1.1 302 Moved Temporarily\r\nLocation: /\r\n\r\n",
+    '/error': "HTTP/1.1 500 Internal Server Error\r\n\r\n",
+}
 WEBROOT = "webroot"
 DEFAULT_URL = WEBROOT + "/index.html"
+
+END_OF_MESSAGE = "/r/n/r/n"
 
 
 def get_file_data(file_name):
@@ -48,18 +55,11 @@ def handle_client_request(resource, client_socket):
         url = WEBROOT + resource
 
     # Special cases handling
-    if resource == '/forbidden':
-        http_header = "HTTP/1.1 403 Forbidden\r\n\r\n"
+    if resource in SPECIAL_CASE_HEADERS:
+        http_header = SPECIAL_CASE_HEADERS[resource]
         client_socket.send(http_header.encode())
         return
-    elif resource == '/moved':
-        http_header = "HTTP/1.1 302 Moved Temporarily\r\nLocation: /\r\n\r\n"
-        client_socket.send(http_header.encode())
-        return
-    elif resource == '/error':
-        http_header = "HTTP/1.1 500 Internal Server Error\r\n\r\n"
-        client_socket.send(http_header.encode())
-        return
+
     # Extract the file type (extension)
     file_type = url.split('.')[-1]
 
@@ -110,6 +110,8 @@ def handle_client(client_socket):
     """
     print('Client connected')
     try:
+        while (char := client_socket.recv(2).decode()) != END_OF_MESSAGE:
+            client_socket += char
         client_request = client_socket.recv(1024)
 
         valid_http, resource = parse_http_request(client_request)
