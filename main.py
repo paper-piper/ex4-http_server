@@ -32,7 +32,7 @@ def get_file_data(file_name):
     """
     Get data from file
     :param file_name: the name of the file
-    :return: the file data in a string
+    :return: data in a string
     """
     try:
         with open(file_name, 'rb') as file:
@@ -88,7 +88,7 @@ def parse_http_request(request):
     Check if request is a valid HTTP request and returns TRUE / FALSE and
     the requested URL
     :param request: the request which was received from the client
-    :return: a tuple of (True/False - depending if the request is valid,
+    :return: a tuple of (True/False - depending on if the request is valid,
     the requested resource )
     """
     pattern = re.compile(r'^(GET)\s+(/[^ ]*)\s+HTTP/1\.1\r\n')
@@ -154,5 +154,5 @@ if __name__ == "__main__":
     # some assertion checks
     assert parse_http_request(b"GET / HTTP/1.1\r\n")[0]
     assert not parse_http_request(b"GET /not_a_real_page HTTP/1.0\r\n")[0]
-    assert not parse_http_request(b"BADREQUEST / HTTP/1.1\r\n")[0]
+    assert not parse_http_request(b"BAD REQUEST / HTTP/1.1\r\n")[0]
     main()
