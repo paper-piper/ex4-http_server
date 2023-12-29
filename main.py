@@ -22,7 +22,11 @@ DEFAULT_URL = WEBROOT + "/index.html"
 
 
 def get_file_data(file_name):
-    """Get data from file."""
+    """
+    Get data from file
+    :param file_name: the name of the file
+    :return: the file data in a string
+    """
     try:
         with open(file_name, 'rb') as file:
             return file.read()
@@ -31,7 +35,13 @@ def get_file_data(file_name):
 
 
 def handle_client_request(resource, client_socket):
-    """Handle client request."""
+    """
+    Check the required resource, generate proper HTTP response and send
+    to client
+    :param resource: the required resource
+    :param client_socket: a socket for the communication with the client
+    :return: None
+    """
     if resource == '/':
         url = DEFAULT_URL
     else:
@@ -74,7 +84,13 @@ def handle_client_request(resource, client_socket):
 
 
 def parse_http_request(request):
-    """Parse HTTP request."""
+    """
+    Check if request is a valid HTTP request and returns TRUE / FALSE and
+    the requested URL
+    :param request: the request which was received from the client
+    :return: a tuple of (True/False - depending if the request is valid,
+    the requested resource )
+    """
     pattern = re.compile(r'^(GET)\s+(/[^ ]*)\s+HTTP/1\.1\r\n')
     match = pattern.match(request.decode())
 
@@ -86,7 +102,12 @@ def parse_http_request(request):
 
 
 def handle_client(client_socket):
-    """Handle client."""
+    """
+    Handles client requests: verifies client's requests are legal HTTP, calls
+    function to handle the requests
+    :param client_socket: the socket for the communication with the client
+    :return: None
+    """
     print('Client connected')
     try:
         client_request = client_socket.recv(1024)
