@@ -1,12 +1,23 @@
 import socket
 import re
 import os
+import Interfaces
+import logging
 
-# Constants
+# Server settings
 QUEUE_SIZE = 10
 IP = '0.0.0.0'
 PORT = 80
 SOCKET_TIMEOUT = 2
+WEBROOT = "webroot"
+DEFAULT_URL = WEBROOT + "/index.html"
+
+# logger settings
+# set up logging
+logging.basicConfig(filename='sever.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('server')
+
+# http protocol information
 CONTENT_TYPES = {
     "html": "text/html;charset=utf-8",
     "jpg": "image/jpeg",
@@ -21,11 +32,24 @@ SPECIAL_CASE_HEADERS = {
     '/forbidden': "HTTP/1.1 403 Forbidden\r\n\r\n",
     '/moved': "HTTP/1.1 302 Moved Temporarily\r\nLocation: /\r\n\r\n",
     '/error': "HTTP/1.1 500 Internal Server Error\r\n\r\n",
+    '/legal': "HTTP/1.1 451 Unavailable for Legal Reasons\r\n\r\n",
 }
-WEBROOT = "webroot"
-DEFAULT_URL = WEBROOT + "/index.html"
 
 END_OF_MESSAGE = "/r/n/r/n"
+
+
+def send_response(client_socket, response):
+    """
+    sends response and logs the process
+    :param client_socket:
+    :param response:
+    :return:
+    """
+    try:
+        client_socket.send(response.encode())
+        logging.info(f"sent message ({response})")
+    except SOCKET_TIMEOUT:
+        logging.error(f"Failed to send message ({response}), socket timed out")
 
 
 def get_file_data(file_name):
@@ -49,6 +73,17 @@ def handle_client_request(resource, client_socket):
     :param client_socket: a socket for the communication with the client
     :return: None
     """
+    # check if resource is one of the available interfaces
+    if '?' in resource:
+        # basically, convert /calculate-area?height=3&width=4 to calculate_area and height=3&width=4
+        interface_name = resource.split('?')[0][1:].replace('-', '_')
+        query_string = resource.split('?')[1]
+        if hasattr(Interfaces, interface_name):
+            interface_func = getattr(Interfaces, interface_name)
+            http_response = interface_func(query_string)
+            send_response(client_socket, http_response)
+            return
+
     if resource == '/':
         url = DEFAULT_URL
     else:
@@ -110,10 +145,23 @@ def handle_client(client_socket):
     """
     print('Client connected')
     try:
-        while (char := client_socket.recv(2).decode()) != END_OF_MESSAGE:
-            client_socket += char
-        client_request = client_socket.recv(1024)
+        # Loop to read data until the end of the HTTP request is reached
+        buffer = b''
+        while b'\r\n\r\n' not in buffer:
+            data = client_socket.recv(1024)
+            if not data:
+                break  # Break the loop if no more data is received (client disconnected)
+            buffer += data
 
+        # Check if the loop exited due to a timeout
+        if b'\r\n\r\n' not in buffer:
+            print('Error: Incomplete HTTP request')
+            http_header = "HTTP/1.1 400 Bad Request\r\n\r\n"
+            send_response(client_socket, http_header)
+            return
+
+        # Extract the HTTP request
+        client_request = buffer
         valid_http, resource = parse_http_request(client_request)
         if valid_http:
             print('Got a valid HTTP request')
@@ -128,7 +176,10 @@ def handle_client(client_socket):
 
 
 def main():
-    """Main function."""
+    """
+    the main function
+    :return:
+    """
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         server_socket.bind((IP, PORT))
@@ -138,7 +189,7 @@ def main():
         while True:
             client_socket, client_address = server_socket.accept()
             try:
-                client_socket.settimeout(SOCKET_TIMEOUT)
+                # client_socket.settimeout(SOCKET_TIMEOUT)
                 handle_client(client_socket)
             except socket.error as err:
                 print('Received socket exception - ' + str(err))
