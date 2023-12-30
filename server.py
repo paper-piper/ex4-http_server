@@ -3,6 +3,7 @@ import re
 import os
 import Interfaces
 import logging
+import sys
 
 # Server settings
 QUEUE_SIZE = 10
@@ -65,7 +66,7 @@ def get_file_data(file_name):
         return None
 
 
-def handle_client_request(resource, client_socket):
+def handle_get_request(resource, client_socket):
     """
     Check the required resource, generate proper HTTP response and send
     to client
@@ -118,6 +119,18 @@ def handle_client_request(resource, client_socket):
     client_socket.send(http_response)
 
 
+def handle_post_request(request, client_socket):
+    # Extract the body from the request
+    body_start_index = request.find(b'\r\n\r\n') + 4
+    body = request[body_start_index:]
+
+    # Process the POST request (e.g., store the uploaded image)
+    # Additional processing code goes here...
+
+    # Send a response to acknowledge the receipt of the POST request
+    send_response(client_socket, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nPOST request processed.")
+
+
 def parse_http_request(request):
     """
     Check if request is a valid HTTP request and returns TRUE / FALSE and
@@ -126,14 +139,14 @@ def parse_http_request(request):
     :return: a tuple of (True/False - depending on if the request is valid,
     the requested resource )
     """
-    pattern = re.compile(r'^(GET)\s+(/[^ ]*)\s+HTTP/1\.1\r\n')
+    pattern = re.compile(r'^(GET|POST)\s+(/[^ ]*)(?:\s+HTTP/1\.1\r\n)?')
     match = pattern.match(request.decode())
 
     if match:
-        method, requested_url = match.groups()
-        return True, requested_url
+        method, resource = match.groups()
+        return method, resource
     else:
-        return False, None
+        return "-1", None
 
 
 def handle_client(client_socket):
@@ -146,33 +159,36 @@ def handle_client(client_socket):
     print('Client connected')
     try:
         # Loop to read data until the end of the HTTP request is reached
-        buffer = b''
-        while b'\r\n\r\n' not in buffer:
+        client_request = b''
+        while b'\r\n\r\n' not in client_request:
             data = client_socket.recv(1024)
             if not data:
                 break  # Break the loop if no more data is received (client disconnected)
-            buffer += data
+            client_request += data
 
         # Check if the loop exited due to a timeout
-        if b'\r\n\r\n' not in buffer:
+        if b'\r\n\r\n' not in client_request:
             print('Error: Incomplete HTTP request')
-            http_header = "HTTP/1.1 400 Bad Request\r\n\r\n"
-            send_response(client_socket, http_header)
+            send_response(client_socket, "HTTP/1.1 400 Bad Request\r\n\r\n")
             return
 
         # Extract the HTTP request
-        client_request = buffer
-        valid_http, resource = parse_http_request(client_request)
-        if valid_http:
-            print('Got a valid HTTP request')
-            handle_client_request(resource, client_socket)
-        else:
+        method, resource = parse_http_request(client_request)
+        if method == "-1":
             print('Error: Not a valid HTTP request')
-            http_header = "HTTP/1.1 400 Bad Request\r\n\r\n"
-            client_socket.send(http_header.encode())
+            send_response(client_socket, "HTTP/1.1 400 Bad Request\r\n\r\n")
+        else:
+            # Dynamically select the handler function
+            handler_function_name = f"handle_{method.lower()}_request"
+            if hasattr(sys.modules[__name__], handler_function_name):
+                handler_function = getattr(sys.modules[__name__], handler_function_name)
+                handler_function(resource, client_request, client_socket)
+            else:
+                send_response(client_socket, "HTTP/1.1 501 Not Implemented\r\n\r\n")
     except socket.timeout:
         print('Client request timed out')
-    print('Closing connection')
+    finally:
+        print('Closing connection')
 
 
 def main():
@@ -203,7 +219,7 @@ def main():
 
 if __name__ == "__main__":
     # some assertion checks
-    assert parse_http_request(b"GET / HTTP/1.1\r\n")[0]
-    assert not parse_http_request(b"GET /not_a_real_page HTTP/1.0\r\n")[0]
-    assert not parse_http_request(b"BAD REQUEST / HTTP/1.1\r\n")[0]
+    assert parse_http_request(b"GET / HTTP/1.1\r\n")[0] == "GET"
+    assert parse_http_request(b"POST /not_a_real_page HTTP/1.0\r\n")[0] == "POST"
+    assert parse_http_request(b"BAD REQUEST / HTTP/1.1\r\n")[0] == "-1"
     main()
