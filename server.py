@@ -36,6 +36,11 @@ SPECIAL_CASE_HEADERS = {
     '/legal': "HTTP/1.1 451 Unavailable for Legal Reasons\r\n\r\n",
 }
 
+# common status codes
+BAD_REQUEST = "HTTP/1.1 400 Bad Request\r\n\r\n"
+NOT_FOUND = "HTTP/1.1 404 Not Found\r\n\r\n"
+NOT_IMPLEMENTED = "HTTP/1.1 501 Not Implemented\r\n\r\n"
+
 END_OF_MESSAGE = "/r/n/r/n"
 
 
@@ -66,6 +71,16 @@ def get_file_data(file_name):
         return None
 
 
+def run_interface(interface_name, interface_value, client_socket):
+    try:
+        if hasattr(Interfaces, interface_name):
+            interface_func = getattr(Interfaces, interface_name)
+            http_response = interface_func(interface_value)
+            send_response(client_socket, http_response)
+    except AttributeError:
+        logger.error("Error while running intefaceasfjsal")
+
+
 def handle_get_request(resource, client_socket):
     """
     Check the required resource, generate proper HTTP response and send
@@ -74,16 +89,12 @@ def handle_get_request(resource, client_socket):
     :param client_socket: a socket for the communication with the client
     :return: None
     """
-    # check if resource is one of the available interfaces
     if '?' in resource:
         # basically, convert /calculate-area?height=3&width=4 to calculate_area and height=3&width=4
         interface_name = resource.split('?')[0][1:].replace('-', '_')
         query_string = resource.split('?')[1]
-        if hasattr(Interfaces, interface_name):
-            interface_func = getattr(Interfaces, interface_name)
-            http_response = interface_func(query_string)
-            send_response(client_socket, http_response)
-            return
+        run_interface(interface_name, query_string, client_socket)
+        return
 
     if resource == '/':
         url = DEFAULT_URL
@@ -101,7 +112,7 @@ def handle_get_request(resource, client_socket):
 
     # Check if file exists and is not a directory
     if not os.path.isfile(url):
-        http_header = "HTTP/1.1 404 Not Found\r\n\r\n"
+        http_header = NOT_FOUND
         http_response = http_header.encode()
         client_socket.send(http_response)
         return
@@ -113,40 +124,66 @@ def handle_get_request(resource, client_socket):
         http_header = f"HTTP/1.1 200 OK\r\nContent-Type: {CONTENT_TYPES.get(file_type, 'text/plain')}\r\n\r\n"
         http_response = http_header.encode() + data
     else:
-        http_header = "HTTP/1.1 404 Not Found\r\n\r\n"
+        http_header = NOT_FOUND
         http_response = http_header.encode()
 
     client_socket.send(http_response)
 
 
-def handle_post_request(request, client_socket):
-    # Extract the body from the request
-    body_start_index = request.find(b'\r\n\r\n') + 4
-    body = request[body_start_index:]
-
-    # Process the POST request (e.g., store the uploaded image)
-    # Additional processing code goes here...
-
+def handle_post_request(request, body, client_socket):
+    # check if is one of avaliable interfaces
+    run_interface(request, body, client_socket)
     # Send a response to acknowledge the receipt of the POST request
     send_response(client_socket, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nPOST request processed.")
 
 
 def parse_http_request(request):
     """
-    Check if request is a valid HTTP request and returns TRUE / FALSE and
-    the requested URL
+    Check if request is a valid HTTP request and returns the method, resource, and body if it's a POST request
     :param request: the request which was received from the client
-    :return: a tuple of (True/False - depending on if the request is valid,
-    the requested resource )
+    :return: a tuple of (method, resource, body) or ("-1", None, None) if invalid
     """
-    pattern = re.compile(r'^(GET|POST)\s+(/[^ ]*)(?:\s+HTTP/1\.1\r\n)?')
-    match = pattern.match(request.decode())
+    # Find the end of the request headers
+    header_end_index = request.find(b'\r\n\r\n') + 4
+
+    # Safely decode only the header part of the request
+    try:
+        header_part = request[:header_end_index].decode()
+    except UnicodeDecodeError:
+        return "-1", None, None
+
+    # Extract the method and resource using a regular expression
+    pattern = re.compile(r'^(GET|POST)\s+(/[^ ]*)\s+HTTP/1\.1\r\n')
+    match = pattern.match(header_part)
 
     if match:
         method, resource = match.groups()
-        return method, resource
+
+        # If it's a POST request, return the body as well, otherwise return None for the body
+        body = request[header_end_index:] if method == "POST" else None
+        return method, resource, body
     else:
-        return "-1", None
+        return "-1", None, None
+
+
+def read_request(client_socket):
+    # Loop to read data until the end of the HTTP request is reached
+    buffer = b''
+    while b'\r\n\r\n' not in buffer:
+        data = client_socket.recv(1024)
+        if not data:
+            break  # Break the loop if no more data is received (client disconnected)
+        buffer += data
+    return buffer
+
+
+def validate_request(buffer):
+    # Check if the loop exited due to a timeout
+    if b'\r\n\r\n' not in buffer:
+        print('Error: Incomplete HTTP request')
+        send_response(buffer, BAD_REQUEST)
+        return False
+    return True
 
 
 def handle_client(client_socket):
@@ -158,33 +195,24 @@ def handle_client(client_socket):
     """
     print('Client connected')
     try:
-        # Loop to read data until the end of the HTTP request is reached
-        client_request = b''
-        while b'\r\n\r\n' not in client_request:
-            data = client_socket.recv(1024)
-            if not data:
-                break  # Break the loop if no more data is received (client disconnected)
-            client_request += data
-
-        # Check if the loop exited due to a timeout
-        if b'\r\n\r\n' not in client_request:
-            print('Error: Incomplete HTTP request')
-            send_response(client_socket, "HTTP/1.1 400 Bad Request\r\n\r\n")
+        client_request = read_request(client_socket)
+        if not validate_request(client_request):
             return
 
         # Extract the HTTP request
-        method, resource = parse_http_request(client_request)
+        method, resource, body = parse_http_request(client_request)
         if method == "-1":
             print('Error: Not a valid HTTP request')
-            send_response(client_socket, "HTTP/1.1 400 Bad Request\r\n\r\n")
+            send_response(client_socket, BAD_REQUEST)
         else:
-            # Dynamically select the handler function
-            handler_function_name = f"handle_{method.lower()}_request"
-            if hasattr(sys.modules[__name__], handler_function_name):
-                handler_function = getattr(sys.modules[__name__], handler_function_name)
-                handler_function(resource, client_request, client_socket)
+            # Select handler method accordingly
+            if method == "GET":
+                handle_get_request(resource, client_socket)
+            elif method == "POST":
+                body = client_request[client_request.find(b'\r\n\r\n') + 4:]
+                handle_post_request(resource, body, client_socket)
             else:
-                send_response(client_socket, "HTTP/1.1 501 Not Implemented\r\n\r\n")
+                send_response(client_socket, NOT_IMPLEMENTED)
     except socket.timeout:
         print('Client request timed out')
     finally:
