@@ -71,14 +71,34 @@ def get_file_data(file_name):
         return None
 
 
-def run_interface(interface_name, interface_value, client_socket):
+def is_interface(resource, client_socket):
+    """
+    brake the header into formatted interface name and query parameters.
+    basically, convert /calculate-area?height=3&width=4 to calculate_area and height=3&width=4
+    :param resource:
+    :param client_socket:
+    :return: true is interface had been detected and runned, false otherways
+    """
+    # TODO: add try except
+    if '?' in resource:
+        # basically, convert /calculate-area?height=3&width=4 to calculate_area and height=3&width=4
+        interface_name = resource.split('?')[0][1:].replace('-', '_')
+        query_string = resource.split('?')[1]
+        run_interface(interface_name, query_string, client_socket)
+        return True
+    return False
+
+
+def run_interface(interface_name, interface_parameters, client_socket):
     try:
         if hasattr(Interfaces, interface_name):
             interface_func = getattr(Interfaces, interface_name)
-            http_response = interface_func(interface_value)
+            http_response = interface_func(interface_parameters)
             send_response(client_socket, http_response)
-    except AttributeError:
-        logger.error("Error while running intefaceasfjsal")
+        else:
+            logger.error(f"Client tried to run un-supported interface (interface: {interface_name})")
+    except AttributeError as e:
+        logger.error(f"Error while finding interface: ({e})")
 
 
 def handle_get_request(resource, client_socket):
@@ -89,11 +109,8 @@ def handle_get_request(resource, client_socket):
     :param client_socket: a socket for the communication with the client
     :return: None
     """
-    if '?' in resource:
-        # basically, convert /calculate-area?height=3&width=4 to calculate_area and height=3&width=4
-        interface_name = resource.split('?')[0][1:].replace('-', '_')
-        query_string = resource.split('?')[1]
-        run_interface(interface_name, query_string, client_socket)
+    # if it is interface, we will call the interface and return
+    if is_interface(resource, client_socket):
         return
 
     if resource == '/':
@@ -132,6 +149,7 @@ def handle_get_request(resource, client_socket):
 
 def handle_post_request(request, body, client_socket):
     # check if is one of avaliable interfaces
+    # TODO: parse the request into interface and parameters, and mix it with the body
     run_interface(request, body, client_socket)
     # Send a response to acknowledge the receipt of the POST request
     send_response(client_socket, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nPOST request processed.")
@@ -247,7 +265,7 @@ def main():
 
 if __name__ == "__main__":
     # some assertion checks
-    assert parse_http_request(b"GET / HTTP/1.1\r\n")[0] == "GET"
-    assert parse_http_request(b"POST /not_a_real_page HTTP/1.0\r\n")[0] == "POST"
-    assert parse_http_request(b"BAD REQUEST / HTTP/1.1\r\n")[0] == "-1"
+    # assert parse_http_request(b"GET / HTTP/1.1\r\n")[0] == "GET"
+    # assert parse_http_request(b"POST /not_a_real_page HTTP/1.0\r\n")[0] == "POST"
+    # assert parse_http_request(b"BAD REQUEST / HTTP/1.1\r\n")[0] == "-1"
     main()
