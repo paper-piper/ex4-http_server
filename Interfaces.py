@@ -1,5 +1,11 @@
 import os
 from PIL import Image
+import io
+import logging
+
+
+logging.basicConfig(filename='Interfaces.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('Interfaces')
 
 
 def parse_query_params(query_string):
@@ -39,14 +45,16 @@ def calculate_area(query_string):
     return http_response
 
 
-def save_image(image_paramters):
+def upload(image_parameters):
     """
     save an image in the "Images" folder
-    :param image_paramters: a tuple of the image name (0) and the image bytes (1)
-    :return:
+    :param image_parameters: a tuple of the image name (0) and the image bytes (1)
+    :return: nothing
     """
-    image_name = image_paramters[0]
-    image_bytes = image_paramters[1]
+    image_name = image_parameters[0].split('=')[1]
+    image_bytes = image_parameters[1]
+    logging.info(f"Trying to save image with the name = {image_name} "
+                 f"and Image bytes = {image_bytes}")
     # Create the "Images" folder if it doesn't exist
     images_folder = os.path.join(os.path.dirname(__file__), "Images")
     os.makedirs(images_folder, exist_ok=True)
@@ -58,7 +66,14 @@ def save_image(image_paramters):
     with Image.open(io.BytesIO(image_bytes)) as img:
         # Save the image to the specified path
         img.save(image_path)
+        logger.info(f"Image: {image_name} saved successfully at: {image_path}")
 
-    print(f"Image saved at: {image_path}")
 
-
+def read_image_bytes(file_path):
+    try:
+        with open(file_path, 'rb') as f:
+            image_bytes = f.read()
+        return image_bytes
+    except Exception as e:
+        print(f"Error reading image bytes: {e}")
+        return None

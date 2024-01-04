@@ -52,8 +52,9 @@ def send_response(client_socket, response):
     :return:
     """
     try:
-        client_socket.send(response.encode())
-        logging.info(f"sent message ({response})")
+        if isinstance(response, str):
+            client_socket.send(response.encode())
+            logging.info(f"sent message ({response})")
     except SOCKET_TIMEOUT:
         logging.error(f"Failed to send message ({response}), socket timed out")
 
@@ -71,22 +72,17 @@ def get_file_data(file_name):
         return None
 
 
-def is_interface(resource, client_socket):
+def brake_header(resource):
     """
     brake the header into formatted interface name and query parameters.
     basically, convert /calculate-area?height=3&width=4 to calculate_area and height=3&width=4
     :param resource:
-    :param client_socket:
-    :return: true is interface had been detected and runned, false otherways
+    :return: interface name, query_string
     """
     # TODO: add try except
-    if '?' in resource:
-        # basically, convert /calculate-area?height=3&width=4 to calculate_area and height=3&width=4
-        interface_name = resource.split('?')[0][1:].replace('-', '_')
-        query_string = resource.split('?')[1]
-        run_interface(interface_name, query_string, client_socket)
-        return True
-    return False
+    interface_name = resource.split('?')[0][1:].replace('-', '_')
+    query_string = resource.split('?')[1]
+    return interface_name, query_string
 
 
 def run_interface(interface_name, interface_parameters, client_socket):
@@ -110,7 +106,10 @@ def handle_get_request(resource, client_socket):
     :return: None
     """
     # if it is interface, we will call the interface and return
-    if is_interface(resource, client_socket):
+    # TODO: add try except
+    if '?' in resource:
+        interface_name, query_params = brake_header(resource)
+        run_interface(interface_name, query_params, client_socket)
         return
 
     if resource == '/':
@@ -149,12 +148,14 @@ def handle_get_request(resource, client_socket):
 
 def handle_post_request(request, body, client_socket):
     # check if is one of avaliable interfaces
-    # TODO: parse the request into interface and parameters, and mix it with the body
-    run_interface(request, body, client_socket)
+    interface_name, query_params = brake_header(request)
+    # we compress together the body and query params in a tuple, [0] = query string and [1] = body
+    run_interface(interface_name, (query_params, body), client_socket)
     # Send a response to acknowledge the receipt of the POST request
     send_response(client_socket, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nPOST request processed.")
 
 
+# TODO: delete function since read_http_request already parses it
 def parse_http_request(request):
     """
     Check if request is a valid HTTP request and returns the method, resource, and body if it's a POST request
@@ -184,17 +185,56 @@ def parse_http_request(request):
         return "-1", None, None
 
 
-def read_request(client_socket):
-    # Loop to read data until the end of the HTTP request is reached
-    buffer = b''
-    while b'\r\n\r\n' not in buffer:
-        data = client_socket.recv(1024)
-        if not data:
-            break  # Break the loop if no more data is received (client disconnected)
-        buffer += data
-    return buffer
+def read_http_request(client_socket):
+    """
+    get the entire request details, parsed.
+    :param client_socket:
+    :return: a tuple where [0] = request type, [1] = request path, [2] = body (optional)
+    """
+    # Read the request line
+    request_line = b''
+    while b'\r\n' not in request_line:
+        request_line += client_socket.recv(1)
+
+    # If the request line is empty, return an empty string
+    if not request_line.strip():
+        return ""
+
+    # Split the request line into method, path, and protocol
+    method, path, protocol = request_line.decode('utf-8').strip().split(' ')
+
+    # Read headers until an empty line is encountered
+    headers = b''
+    while True:
+        header_line = b''
+        while b'\r\n' not in header_line:
+            header_line += client_socket.recv(1)
+
+        headers += header_line
+
+        # If an empty line is encountered, break the loop
+        if not header_line.strip():
+            break
+
+    # Extract Content-Length from headers
+    content_length = 0
+    for header in headers.decode('utf-8').split('\r\n'):
+        if header.startswith('Content-Length:'):
+            content_length = int(header.split(':')[1].strip())
+
+    # Read the request body based on Content-Length
+    if content_length > 0:
+        body = b''
+        while len(body) < content_length:
+            body += client_socket.recv(1)
+    else:
+        body = b""
+
+    # return request details
+    return method, path, body
 
 
+# TODO: delete function
 def validate_request(buffer):
     # Check if the loop exited due to a timeout
     if b'\r\n\r\n' not in buffer:
@@ -213,12 +253,8 @@ def handle_client(client_socket):
     """
     print('Client connected')
     try:
-        client_request = read_request(client_socket)
-        if not validate_request(client_request):
-            return
+        method, resource, body = read_http_request(client_socket)
 
-        # Extract the HTTP request
-        method, resource, body = parse_http_request(client_request)
         if method == "-1":
             print('Error: Not a valid HTTP request')
             send_response(client_socket, BAD_REQUEST)
@@ -227,7 +263,6 @@ def handle_client(client_socket):
             if method == "GET":
                 handle_get_request(resource, client_socket)
             elif method == "POST":
-                body = client_request[client_request.find(b'\r\n\r\n') + 4:]
                 handle_post_request(resource, body, client_socket)
             else:
                 send_response(client_socket, NOT_IMPLEMENTED)
