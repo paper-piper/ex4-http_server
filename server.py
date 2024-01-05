@@ -37,6 +37,7 @@ SPECIAL_CASE_HEADERS = {
 # common status codes
 BAD_REQUEST = "HTTP/1.1 400 Bad Request\r\n\r\n"
 NOT_FOUND = "HTTP/1.1 404 Not Found\r\n\r\n"
+NOT_FOUND_IMAGE_NAME = "not_found_duck.jpg"
 NOT_IMPLEMENTED = "HTTP/1.1 501 Not Implemented\r\n\r\n"
 
 
@@ -48,8 +49,8 @@ def send_response(client_socket, response):
     :return:
     """
     try:
-        if isinstance(response, str):
-            client_socket.send(response.encode())
+        if response is not None:
+            client_socket.send(response)
             logging.info(f"Sent message ({response})")
     except SOCKET_TIMEOUT:
         logging.error(f"Failed to send message ({response}), socket timed out")
@@ -102,7 +103,6 @@ def run_interface(interface_name, interface_parameters, client_socket):
         return False
 
 
-
 def handle_get_request(resource, client_socket):
     """
     Check the required resource, generate proper HTTP response and send
@@ -127,7 +127,7 @@ def handle_get_request(resource, client_socket):
         # Special cases handling
         if resource in SPECIAL_CASE_HEADERS:
             http_header = SPECIAL_CASE_HEADERS[resource]
-            client_socket.send(http_header.encode())
+            send_response(client_socket, http_header.encode())
             logger.info(f"Sent special case header for resource: {resource}")
             return
 
@@ -138,7 +138,7 @@ def handle_get_request(resource, client_socket):
         if not os.path.isfile(url):
             http_header = NOT_FOUND
             http_response = http_header.encode()
-            client_socket.send(http_response)
+            send_response(client_socket, http_response)
             return
 
         # Read the data from the file
@@ -152,11 +152,10 @@ def handle_get_request(resource, client_socket):
             http_header = NOT_FOUND
             http_response = http_header.encode()
 
-        client_socket.send(http_response)
+        send_response(client_socket, http_response)
         logger.info(f"Sent HTTP response for resource: {resource}")
     except IndexError as i:
         logger.error(f"Error handling GET request: {i}")
-
 
 
 def handle_post_request(request, body, client_socket):
@@ -164,10 +163,9 @@ def handle_post_request(request, body, client_socket):
     # we compress together the body and query params in a tuple, [0] = query string and [1] = body
     # if the interface executed successfully, we return okay response. else, we return bad request
     if run_interface(interface_name, (query_params, body), client_socket):
-        send_response(client_socket, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nPOST request processed.")
         logger.info("Sent HTTP response for successful POST request")
     else:
-        send_response(client_socket, BAD_REQUEST)
+        send_response(client_socket, BAD_REQUEST.encode())
         logger.error("Sent HTTP response for unsuccessful POST request")
 
 
@@ -238,7 +236,7 @@ def handle_client(client_socket):
 
         if method == "-1":
             print('Error: Not a valid HTTP request')
-            send_response(client_socket, BAD_REQUEST)
+            send_response(client_socket, BAD_REQUEST.encode())
         else:
             # Select handler method accordingly
             if method == "GET":
@@ -246,7 +244,7 @@ def handle_client(client_socket):
             elif method == "POST":
                 handle_post_request(resource, body, client_socket)
             else:
-                send_response(client_socket, NOT_IMPLEMENTED)
+                send_response(client_socket, NOT_IMPLEMENTED.encode())
     except socket.timeout:
         logger.warning('Client request timed out')
         print('Client request timed out')
@@ -255,6 +253,23 @@ def handle_client(client_socket):
     finally:
         logger.info('Closing connection')
         print('Closing connection')
+
+
+def config_not_found():
+    global NOT_FOUND
+    images_folder = os.path.join(os.path.dirname(__file__), "special_images")
+    image_path = os.path.join(images_folder, NOT_FOUND_IMAGE_NAME)
+    with open(image_path, 'rb') as image:
+        image_bytes = image.read()
+        image_type = NOT_FOUND_IMAGE_NAME.split('.')[1]
+        headers = [
+            "HTTP/1.1 404 Not Found",
+            f"Content-Type: {CONTENT_TYPES[image_type]}",
+            f"Content-Length: {len(image_bytes)}",
+            "Connection: close",
+        ]
+        headers_section = "\r\n".join(headers)
+        NOT_FOUND = f"{headers_section}\r\n\r\n".encode() + image_bytes
 
 
 def main():
@@ -267,7 +282,7 @@ def main():
         server_socket.bind((IP, PORT))
         server_socket.listen(QUEUE_SIZE)
         print("Listening for connections on port %d" % PORT)
-
+        config_not_found()
         while True:
             client_socket, client_address = server_socket.accept()
             try:
