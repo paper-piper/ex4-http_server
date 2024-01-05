@@ -38,7 +38,6 @@ SPECIAL_CASE_HEADERS = {
 BAD_REQUEST = "HTTP/1.1 400 Bad Request\r\n\r\n"
 NOT_FOUND = "HTTP/1.1 404 Not Found\r\n\r\n"
 NOT_IMPLEMENTED = "HTTP/1.1 501 Not Implemented\r\n\r\n"
-OK = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nPOST request processed."
 
 
 def send_response(client_socket, response):
@@ -155,7 +154,7 @@ def handle_post_request(request, body, client_socket):
     # we compress together the body and query params in a tuple, [0] = query string and [1] = body
     # if the interface executed successfully, we return okay response. else, we return bad request
     if run_interface(interface_name, (query_params, body), client_socket):
-        send_response(client_socket, OK)
+        send_response(client_socket, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nPOST request processed.")
     else:
         send_response(client_socket, BAD_REQUEST)
 

@@ -7,6 +7,9 @@ import logging
 logging.basicConfig(filename='Interfaces.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('Interfaces')
 
+# common status codes
+BAD_REQUEST = "HTTP/1.1 400 Bad Request\r\n\r\n"
+
 
 def parse_query_params(query_string):
     params = query_string.split('&')
@@ -23,7 +26,7 @@ def calculate_next(query_string):
         response = str(num + 1)
         http_header = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n"
     except (ValueError, IndexError):
-        http_header = "HTTP/1.1 400 Bad Request\r\n\r\n"
+        http_header = BAD_REQUEST
         response = ""
 
     http_response = http_header + response
@@ -38,7 +41,7 @@ def calculate_area(query_string):
         response = str(height * width / 2)
         http_header = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n"
     except (KeyError, ValueError,):
-        http_header = "HTTP/1.1 400 Bad Request\r\n\r\n"
+        http_header = BAD_REQUEST
         response = ""
 
     http_response = http_header + response
