@@ -286,7 +286,7 @@ def main():
         while True:
             client_socket, client_address = server_socket.accept()
             try:
-                # client_socket.settimeout(SOCKET_TIMEOUT)
+                client_socket.settimeout(SOCKET_TIMEOUT)
                 handle_client(client_socket)
             except socket.error as err:
                 print('Received socket exception - ' + str(err))

@@ -47,7 +47,7 @@ def calculate_area(query_string):
 
 def upload(image_parameters):
     """
-    save an image in the "Images" folder
+    save an image in the "upload" folder
     :param image_parameters: a tuple of the image name (0) and the image bytes (1)
     :return: nothing
     """
@@ -55,8 +55,8 @@ def upload(image_parameters):
     image_bytes = image_parameters[1]
     logging.info(f"Trying to save image with the name = {image_name} "
                  f"and Image bytes = {image_bytes}")
-    # Create the "Images" folder if it doesn't exist
-    images_folder = os.path.join(os.path.dirname(__file__), "Images")
+    # Create the "upload" folder if it doesn't exist
+    images_folder = os.path.join(os.path.dirname(__file__), "upload")
     os.makedirs(images_folder, exist_ok=True)
 
     # Construct the file path for the new image
