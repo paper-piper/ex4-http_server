@@ -1,7 +1,5 @@
 import socket
-import re
 import os
-import Interfaces
 import logging
 
 # Server settings
@@ -35,6 +33,11 @@ SPECIAL_CASE_HEADERS = {
     '/legal': "HTTP/1.1 451 Unavailable for Legal Reasons\r\n\r\n",
 }
 
+# common status codes
+BAD_REQUEST = "HTTP/1.1 400 Bad Request\r\n\r\n"
+NOT_FOUND = "HTTP/1.1 404 Not Found\r\n\r\n"
+NOT_FOUND_IMAGE_NAME = "not_found_duck.jpg"
+NOT_FOUND_FOLDER_NAME = "special_images"
 END_OF_MESSAGE = "/r/n/r/n"
 
 
@@ -73,16 +76,6 @@ def handle_client_request(resource, client_socket):
     :param client_socket: a socket for the communication with the client
     :return: None
     """
-    # check if resource is one of the available interfaces
-    if '?' in resource:
-        # basically, convert /calculate-area?height=3&width=4 to calculate_area and height=3&width=4
-        interface_name = resource.split('?')[0][1:].replace('-', '_')
-        query_string = resource.split('?')[1]
-        if hasattr(Interfaces, interface_name):
-            interface_func = getattr(Interfaces, interface_name)
-            http_response = interface_func(query_string)
-            send_response(client_socket, http_response)
-            return
 
     if resource == '/':
         url = DEFAULT_URL
@@ -100,8 +93,8 @@ def handle_client_request(resource, client_socket):
 
     # Check if file exists and is not a directory
     if not os.path.isfile(url):
-        http_header = "HTTP/1.1 404 Not Found\r\n\r\n"
-        http_response = http_header.encode()
+        http_header = NOT_FOUND
+        http_response = http_header
         client_socket.send(http_response)
         return
 
@@ -109,31 +102,54 @@ def handle_client_request(resource, client_socket):
     data = get_file_data(url)
 
     if data:
-        http_header = f"HTTP/1.1 200 OK\r\nContent-Type: {CONTENT_TYPES.get(file_type, 'text/plain')}\r\n\r\n"
+        http_header = (f"HTTP/1.1 200 OK\r\nContent-Type: {CONTENT_TYPES.get(file_type, 'text/plain')}\r\n"
+                       f"Content-Length: {len(data)}\r\n\r\n")
         http_response = http_header.encode() + data
     else:
-        http_header = "HTTP/1.1 404 Not Found\r\n\r\n"
+        http_header = NOT_FOUND
         http_response = http_header.encode()
 
     client_socket.send(http_response)
 
 
-def parse_http_request(request):
+def read_http_request(client_socket):
     """
-    Check if request is a valid HTTP request and returns TRUE / FALSE and
-    the requested URL
-    :param request: the request which was received from the client
-    :return: a tuple of (True/False - depending on if the request is valid,
-    the requested resource )
+    get the entire request details, parsed.
+    :param client_socket:
+    :return: a tuple where [0] = is valid request, [1] = path
     """
-    pattern = re.compile(r'^(GET)\s+(/[^ ]*)\s+HTTP/1\.1\r\n')
-    match = pattern.match(request.decode())
+    try:
+        # Read the request line
+        request_line = b''
+        while b'\r\n' not in request_line:
+            request_line += client_socket.recv(1)
 
-    if match:
-        method, requested_url = match.groups()
-        return True, requested_url
-    else:
-        return False, None
+        # If the request line is empty, return an empty string
+        if not request_line.strip():
+            return False, ""
+
+        # Split the request line into method, path, and protocol
+        method, path, protocol = request_line.decode('utf-8').strip().split(' ')
+
+        # Read headers until an empty line is encountered
+        headers = b''
+        while True:
+            header_line = b''
+            while b'\r\n' not in header_line:
+                header_line += client_socket.recv(1)
+
+            headers += header_line
+
+            # If an empty line is encountered, break the loop
+            if not header_line.strip():
+                break
+
+        # return request details
+        logger.info(f"Read HTTP request: Method: {method}, Path: {path}")
+        return method, path
+    except TypeError as t:
+        logger.error(f"Error reading HTTP request: {t}")
+        return False, ""
 
 
 def handle_client(client_socket):
@@ -145,34 +161,35 @@ def handle_client(client_socket):
     """
     print('Client connected')
     try:
-        # Loop to read data until the end of the HTTP request is reached
-        buffer = b''
-        while b'\r\n\r\n' not in buffer:
-            data = client_socket.recv(1024)
-            if not data:
-                break  # Break the loop if no more data is received (client disconnected)
-            buffer += data
 
-        # Check if the loop exited due to a timeout
-        if b'\r\n\r\n' not in buffer:
-            print('Error: Incomplete HTTP request')
-            http_header = "HTTP/1.1 400 Bad Request\r\n\r\n"
-            send_response(client_socket, http_header)
-            return
-
-        # Extract the HTTP request
-        client_request = buffer
-        valid_http, resource = parse_http_request(client_request)
+        valid_http, resource = read_http_request(client_socket)
         if valid_http:
             print('Got a valid HTTP request')
             handle_client_request(resource, client_socket)
         else:
             print('Error: Not a valid HTTP request')
-            http_header = "HTTP/1.1 400 Bad Request\r\n\r\n"
+            http_header = BAD_REQUEST
             client_socket.send(http_header.encode())
     except socket.timeout:
         print('Client request timed out')
     print('Closing connection')
+
+
+def config_not_found():
+    global NOT_FOUND
+    images_folder = os.path.join(os.path.dirname(__file__), NOT_FOUND_FOLDER_NAME)
+    image_path = os.path.join(images_folder, NOT_FOUND_IMAGE_NAME)
+    with open(image_path, 'rb') as image:
+        image_bytes = image.read()
+        image_type = NOT_FOUND_IMAGE_NAME.split('.')[1]
+        headers = [
+            "HTTP/1.1 404 Not Found",
+            f"Content-Type: {CONTENT_TYPES[image_type]}",
+            f"Content-Length: {len(image_bytes)}",
+            "Connection: close",
+        ]
+        headers_section = "\r\n".join(headers)
+        NOT_FOUND = f"{headers_section}\r\n\r\n".encode() + image_bytes
 
 
 def main():
@@ -181,6 +198,7 @@ def main():
     :return:
     """
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    config_not_found()
     try:
         server_socket.bind((IP, PORT))
         server_socket.listen(QUEUE_SIZE)
@@ -189,7 +207,7 @@ def main():
         while True:
             client_socket, client_address = server_socket.accept()
             try:
-                # client_socket.settimeout(SOCKET_TIMEOUT)
+                client_socket.settimeout(SOCKET_TIMEOUT)
                 handle_client(client_socket)
             except socket.error as err:
                 print('Received socket exception - ' + str(err))
@@ -202,8 +220,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # some assertion checks
-    assert parse_http_request(b"GET / HTTP/1.1\r\n")[0]
-    assert not parse_http_request(b"GET /not_a_real_page HTTP/1.0\r\n")[0]
-    assert not parse_http_request(b"BAD REQUEST / HTTP/1.1\r\n")[0]
     main()
