@@ -113,6 +113,11 @@ def handle_client_request(resource, client_socket):
 
 
 def validate_request_line(request_line):
+    """
+    validate and parse request line
+    :param request_line:
+    :return:
+    """
     try:
         method, path, protocol = request_line.decode('utf-8').strip().split(' ')
         if method.lower() != "get" or not protocol.lower().startswith("http"):
@@ -185,6 +190,10 @@ def handle_client(client_socket):
 
 
 def config_not_found():
+    """
+    configs the not found variable and adds to it the picture
+    :return:
+    """
     global NOT_FOUND
     images_folder = os.path.join(os.path.dirname(__file__), NOT_FOUND_FOLDER_NAME)
     image_path = os.path.join(images_folder, NOT_FOUND_IMAGE_NAME)
@@ -216,7 +225,7 @@ def main():
         while True:
             client_socket, client_address = server_socket.accept()
             try:
-                # client_socket.settimeout(SOCKET_TIMEOUT)
+                client_socket.settimeout(SOCKET_TIMEOUT)
                 handle_client(client_socket)
             except socket.error as err:
                 print('Received socket exception - ' + str(err))
