@@ -112,6 +112,19 @@ def handle_client_request(resource, client_socket):
     client_socket.send(http_response)
 
 
+def validate_request_line(request_line):
+    try:
+        method, path, protocol = request_line.decode('utf-8').strip().split(' ')
+        if method.lower() != "get" or not protocol.lower().startswith("http"):
+            logger.info("User entered invalid http request")
+            return False, "", ""
+        logger.info(f"Read valid HTTP request: Method: {method}, Path: {path}")
+        return True, method, path
+    except IndexError as i:
+        logger.info("User entered invalid http request")
+        return False, "", ""
+
+
 def read_http_request(client_socket):
     """
     get the entire request details, parsed.
@@ -126,10 +139,7 @@ def read_http_request(client_socket):
 
         # If the request line is empty, return an empty string
         if not request_line.strip():
-            return False, ""
-
-        # Split the request line into method, path, and protocol
-        method, path, protocol = request_line.decode('utf-8').strip().split(' ')
+            return ""
 
         # Read headers until an empty line is encountered
         headers = b''
@@ -145,11 +155,9 @@ def read_http_request(client_socket):
                 break
 
         # return request details
-        logger.info(f"Read HTTP request: Method: {method}, Path: {path}")
-        return method, path
+        return request_line
     except TypeError as t:
         logger.error(f"Error reading HTTP request: {t}")
-        return False, ""
 
 
 def handle_client(client_socket):
@@ -162,10 +170,11 @@ def handle_client(client_socket):
     print('Client connected')
     try:
 
-        valid_http, resource = read_http_request(client_socket)
+        request_line = read_http_request(client_socket)
+        valid_http, method, path = validate_request_line(request_line)
         if valid_http:
-            print('Got a valid HTTP request')
-            handle_client_request(resource, client_socket)
+            logger.error('Got a valid HTTP request')
+            handle_client_request(path, client_socket)
         else:
             print('Error: Not a valid HTTP request')
             http_header = BAD_REQUEST
@@ -207,7 +216,7 @@ def main():
         while True:
             client_socket, client_address = server_socket.accept()
             try:
-                client_socket.settimeout(SOCKET_TIMEOUT)
+                # client_socket.settimeout(SOCKET_TIMEOUT)
                 handle_client(client_socket)
             except socket.error as err:
                 print('Received socket exception - ' + str(err))
@@ -220,4 +229,19 @@ def main():
 
 
 if __name__ == "__main__":
+    # Test case 1: Valid GET request
+    request_line_1 = b"GET /path/to/resource HTTP/1.1"
+    assert validate_request_line(request_line_1) == (True, "GET", "/path/to/resource")
+
+    # Test case 2: Valid GET request with different path
+    request_line_2 = b"GET /another/path HTTP/1.1"
+    assert validate_request_line(request_line_2) == (True, "GET", "/another/path")
+
+    # Test case 3: Invalid method (not GET)
+    request_line_3 = b"POST /path/to/resource HTTP/1.1"
+    assert validate_request_line(request_line_3) == (False, "", "")
+
+    # Test case 4: Invalid protocol (not HTTP)
+    request_line_4 = b"GET /path/to/resource AGreatProtocol/1.1"
+    assert validate_request_line(request_line_4) == (False, "", "")
     main()
