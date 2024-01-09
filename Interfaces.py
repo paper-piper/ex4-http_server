@@ -90,8 +90,12 @@ def image(image_name):
     # Construct the file path for the new image
     image_path = os.path.join(images_folder, image_name)
 
-    with open(image_path, 'rb') as image_file:
-        image_bytes = image_file.read()
+    try:
+        with open(image_path, 'rb') as image_file:
+            image_bytes = image_file.read()
+    except FileNotFoundError:
+        # If the file is not found, return a 404 Not Found response
+        return b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
 
     # Determine the content type based on the image file
     image_type = image_name.split('.')[1]
@@ -121,3 +125,20 @@ def read_image_bytes(file_path):
     except Exception as e:
         print(f"Error reading image bytes: {e}")
         return None
+
+
+def config_not_found():
+    global NOT_FOUND
+    images_folder = os.path.join(os.path.dirname(__file__), NOT_FOUND_FOLDER_NAME)
+    image_path = os.path.join(images_folder, NOT_FOUND_IMAGE_NAME)
+    with open(image_path, 'rb') as image:
+        image_bytes = image.read()
+        image_type = NOT_FOUND_IMAGE_NAME.split('.')[1]
+        headers = [
+            "HTTP/1.1 404 Not Found",
+            f"Content-Type: {CONTENT_TYPES[image_type]}",
+            f"Content-Length: {len(image_bytes)}",
+            "Connection: close",
+        ]
+        headers_section = "\r\n".join(headers)
+        NOT_FOUND = f"{headers_section}\r\n\r\n".encode() + image_bytes
