@@ -38,6 +38,7 @@ SPECIAL_CASE_HEADERS = {
 BAD_REQUEST = "HTTP/1.1 400 Bad Request\r\n\r\n"
 NOT_FOUND = "HTTP/1.1 404 Not Found\r\n\r\n"
 NOT_FOUND_IMAGE_NAME = "not_found_duck.jpg"
+NOT_FOUND_FOLDER_NAME = "special_images"
 NOT_IMPLEMENTED = "HTTP/1.1 501 Not Implemented\r\n\r\n"
 
 
@@ -257,7 +258,7 @@ def handle_client(client_socket):
 
 def config_not_found():
     global NOT_FOUND
-    images_folder = os.path.join(os.path.dirname(__file__), "special_images")
+    images_folder = os.path.join(os.path.dirname(__file__), NOT_FOUND_FOLDER_NAME)
     image_path = os.path.join(images_folder, NOT_FOUND_IMAGE_NAME)
     with open(image_path, 'rb') as image:
         image_bytes = image.read()
