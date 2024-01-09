@@ -184,10 +184,7 @@ def read_http_request(client_socket):
 
         # If the request line is empty, return an empty string
         if not request_line.strip():
-            return ""
-
-        # Split the request line into method, path, and protocol
-        method, path, protocol = request_line.decode('utf-8').strip().split(' ')
+            return "", b""
 
         # Read headers until an empty line is encountered
         headers = b''
@@ -217,11 +214,32 @@ def read_http_request(client_socket):
             body = b""
 
         # return request details
-        logger.info(f"Read HTTP request: Method: {method}, Path: {path}, Body length: {len(body)}")
-        return method, path, body
+        logger.info(f"Read HTTP request line: {request_line}, Body length: {len(body)}")
+        return request_line, body
     except TypeError as t:
         logger.error(f"Error reading HTTP request: {t}")
-        return "-1", "", b""
+        return "", b""
+
+
+def validate_request_line(request_line):
+    """
+    validate and parse request line
+    :param request_line:
+    :return: a tuple where [0] = is valid, [1] = http method, [2] = recourse
+    """
+    try:
+        method, recourse, protocol = request_line.decode('utf-8').strip().split(' ')
+        valid_method = method == "GET" or method == "POST"
+        valid_protocol = protocol.lower().startswith('http')
+        if not valid_protocol or not valid_method:
+            logger.info("User entered invalid http request")
+            return False, "", ""
+        else:
+            logger.info(f"Read valid HTTP request: Method: {method}, recourse: {recourse}")
+            return True, method, recourse
+    except IndexError as i:
+        logger.info("User entered invalid http request")
+        return False, "", ""
 
 
 def handle_client(client_socket):
@@ -233,9 +251,10 @@ def handle_client(client_socket):
     """
     print('Client connected')
     try:
-        method, resource, body = read_http_request(client_socket)
+        request_line, body = read_http_request(client_socket)
+        is_valid, method, resource = validate_request_line(request_line)
 
-        if method == "-1":
+        if not is_valid:
             print('Error: Not a valid HTTP request')
             send_response(client_socket, BAD_REQUEST.encode())
         else:
@@ -300,6 +319,19 @@ def main():
 
 
 if __name__ == "__main__":
-    # some assertion checks
-    # TODO: add assertion checks for function I can check
+    # Test case 1: Valid GET request
+    request_line_1 = b"GET /path/to/resource HTTP/1.1"
+    assert validate_request_line(request_line_1) == (True, "GET", "/path/to/resource")
+
+    # Test case 2: Valid GET request with different path
+    request_line_2 = b"GET /another/path HTTP/1.1"
+    assert validate_request_line(request_line_2) == (True, "GET", "/another/path")
+
+    # Test case 3: Valid method (Post and not get)
+    request_line_3 = b"POST /path/to/resource HTTP/1.1"
+    assert validate_request_line(request_line_3) == (True, "POST", "/path/to/resource")
+
+    # Test case 4: Invalid protocol (not HTTP)
+    request_line_4 = b"GET /path/to/resource AGreatProtocol/1.1"
+    assert validate_request_line(request_line_4) == (False, "", "")
     main()
