@@ -42,7 +42,7 @@ NOT_FOUND_FOLDER_NAME = "special_images"
 NOT_IMPLEMENTED = "HTTP/1.1 501 Not Implemented\r\n\r\n"
 
 
-def send_response(client_socket, response):
+def send_response(client_socket: socket, response: bytes) -> None:
     """
     sends response and logs the process
     :param client_socket:
@@ -57,7 +57,7 @@ def send_response(client_socket, response):
         logging.error(f"Failed to send message ({response}), socket timed out")
 
 
-def get_file_data(file_name):
+def get_file_data(file_name: str) -> bytes:
     """
     Get data from file
     :param file_name: the name of the file
@@ -68,10 +68,10 @@ def get_file_data(file_name):
             return file.read()
     except FileNotFoundError:
         logger.error(f"File not found: {file_name}")
-        return None
+        return b""
 
 
-def brake_header(resource):
+def brake_header(resource: str) -> (str, str):
     """
     Break the header into formatted interface name and query parameters.
     Basically, convert /calculate-area?height=3&width=4 to calculate_area and height=3&width=4
@@ -87,7 +87,7 @@ def brake_header(resource):
         return None, None
 
 
-def run_interface(interface_name, interface_parameters, client_socket):
+def run_interface(interface_name: str, interface_parameters, client_socket: socket) -> bool:
     try:
         if hasattr(Interfaces, interface_name):
             interface_func = getattr(Interfaces, interface_name)
@@ -104,7 +104,7 @@ def run_interface(interface_name, interface_parameters, client_socket):
         return False
 
 
-def handle_get_request(resource, client_socket):
+def handle_get_request(resource: str, client_socket: socket) -> None:
     """
     Check the required resource, generate proper HTTP response and send
     to client
@@ -145,7 +145,7 @@ def handle_get_request(resource, client_socket):
         # Read the data from the file
         data = get_file_data(url)
 
-        if data:
+        if data != b"":
             http_header = (f"HTTP/1.1 200 OK\r\nContent-Type: {CONTENT_TYPES.get(file_type, 'text/plain')}\r\n"
                            f"Content-Length: {len(data)}\r\n\r\n")
             http_response = http_header.encode() + data
@@ -159,7 +159,7 @@ def handle_get_request(resource, client_socket):
         logger.error(f"Error handling GET request: {i}")
 
 
-def handle_post_request(request, body, client_socket):
+def handle_post_request(request: str, body: bytes, client_socket: socket) -> None:
     interface_name, query_params = brake_header(request)
     # we compress together the body and query params in a tuple, [0] = query string and [1] = body
     # if the interface executed successfully, we return okay response. else, we return bad request
@@ -170,7 +170,7 @@ def handle_post_request(request, body, client_socket):
         logger.error("Sent HTTP response for unsuccessful POST request")
 
 
-def read_http_request(client_socket):
+def read_http_request(client_socket: socket) -> (str, str):
     """
     get the entire request details, parsed.
     :param client_socket:
@@ -221,7 +221,7 @@ def read_http_request(client_socket):
         return "", b""
 
 
-def validate_request_line(request_line):
+def validate_request_line(request_line: str) -> (bool, str, str):
     """
     validate and parse request line
     :param request_line:
@@ -242,7 +242,7 @@ def validate_request_line(request_line):
         return False, "", ""
 
 
-def handle_client(client_socket):
+def handle_client(client_socket: socket) -> None:
     """
     Handles client requests: verifies client's requests are legal HTTP, calls
     function to handle the requests
@@ -275,7 +275,7 @@ def handle_client(client_socket):
         print('Closing connection')
 
 
-def config_not_found():
+def config_not_found() -> None:
     global NOT_FOUND
     images_folder = os.path.join(os.path.dirname(__file__), NOT_FOUND_FOLDER_NAME)
     image_path = os.path.join(images_folder, NOT_FOUND_IMAGE_NAME)
