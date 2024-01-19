@@ -1,3 +1,10 @@
+"""
+Author: Yoni Reichert
+Program name: ex4-http_server
+Description: Implements interfaces for webroot website
+Date: 19-01-2024
+"""
+
 import os
 from PIL import Image
 import io

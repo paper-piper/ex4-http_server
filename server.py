@@ -1,3 +1,10 @@
+"""
+Author: Yoni Reichert
+Program name: ex4-http_server
+Description: Implements http protocol and specific interface for webroot website
+Date: 19-01-2024
+"""
+
 import socket
 import os
 import Interfaces
